@@ -1,0 +1,7 @@
+Manifest-Version: 1.0
+Main-Class: com.demo.clog.ELKMain
+Archiver-Version: Plexus Archiver
+Created-By: Apache Maven 3.5.2
+Class-Path: lib/tools.jar
+Build-Jdk: 1.8.0_171
+
