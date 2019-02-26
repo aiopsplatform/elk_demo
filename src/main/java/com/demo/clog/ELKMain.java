@@ -1,25 +1,32 @@
 package com.demo.clog;
 
-import javafx.beans.property.MapProperty;
-import org.apache.lucene.search.TermQuery;
+import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
+import net.sf.json.JSONObject;
 import org.elasticsearch.action.ActionFuture;
-import org.elasticsearch.action.admin.indices.stats.CommonStats;
-import org.elasticsearch.action.admin.indices.stats.IndexStats;
+import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
+import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
 import org.elasticsearch.action.admin.indices.stats.IndicesStatsRequest;
 import org.elasticsearch.action.admin.indices.stats.IndicesStatsResponse;
 import org.elasticsearch.action.get.GetResponse;
+import org.elasticsearch.action.index.IndexRequestBuilder;
+import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.client.Client;
-import org.elasticsearch.client.IndicesAdminClient;
+import org.elasticsearch.action.search.SearchType;
+import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.transport.TransportClient;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.cluster.metadata.MappingMetaData;
+import org.elasticsearch.common.collect.ImmutableOpenMap;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.TransportAddress;
-import org.elasticsearch.index.Index;
+import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
+import org.elasticsearch.index.query.MultiMatchQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.query.RangeQueryBuilder;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.aggregations.Aggregation;
@@ -28,20 +35,23 @@ import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.bucket.filter.Filter;
 import org.elasticsearch.search.aggregations.bucket.filter.Filters;
 import org.elasticsearch.search.aggregations.bucket.filter.FiltersAggregator;
+import org.elasticsearch.search.aggregations.bucket.histogram.Histogram;
 import org.elasticsearch.search.aggregations.bucket.range.Range;
+import org.elasticsearch.search.aggregations.bucket.terms.StringTerms;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.aggregations.metrics.avg.Avg;
 import org.elasticsearch.search.aggregations.metrics.cardinality.Cardinality;
 import org.elasticsearch.search.aggregations.metrics.max.Max;
 import org.elasticsearch.search.aggregations.metrics.min.Min;
+import org.elasticsearch.search.aggregations.metrics.stats.Stats;
 import org.elasticsearch.search.aggregations.metrics.sum.Sum;
-import org.elasticsearch.transport.Transport;
+import org.elasticsearch.search.sort.SortOrder;
 import org.elasticsearch.transport.client.PreBuiltTransportClient;
 
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.security.PrivateKey;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class ELKMain {
@@ -52,7 +62,9 @@ public class ELKMain {
     public static int clientPort = 9300;
     public static String elkIndex = "logstash-nginx-access-log";
     public static String elkType = "doc";
-    public static String elkId1 = "6L-zeWgB94PVfPphkTPm";
+    public static String elkId1 = "ANBCkmgBM03z9jfj8nu3";
+    public static Integer response = 200;
+
 
     //获取ELK客户端
     public static TransportClient getClient() throws UnknownHostException {
@@ -76,7 +88,7 @@ public class ELKMain {
     public static void doQuery2() throws UnknownHostException {
         TransportClient client = getClient();
         QueryBuilder qb = QueryBuilders.matchAllQuery();
-        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setSize(3).get();
+        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).get();
         SearchHits hits = sr.getHits();
         for (SearchHit hit : hits) {
             System.out.println(hit.getSourceAsString());
@@ -86,8 +98,9 @@ public class ELKMain {
     //match查询
     public static void doQuery3() throws UnknownHostException {
         TransportClient client = getClient();
-        QueryBuilder qb = QueryBuilders.matchQuery("agent", "Mozilla/5.0");
-        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setSize(3).get();
+        QueryBuilder qb = QueryBuilders.matchAllQuery();
+        //Time.timeValueMinutes-----这个设置查询超时时间
+        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setScroll(TimeValue.timeValueMinutes(2)).get();
         SearchHits hits = sr.getHits();
         for (SearchHit hit : hits) {
             System.out.println(hit.getSourceAsString());
@@ -98,7 +111,7 @@ public class ELKMain {
     public static void doQuery4() throws UnknownHostException {
         TransportClient client = getClient();
         QueryBuilder qb = QueryBuilders.multiMatchQuery("x64", "Mozilla/5.0", "Win64;", "agent");
-        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setSize(3).get();
+        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setSize(10).get();
         SearchHits hits = sr.getHits();
         for (SearchHit hit : hits) {
             System.out.println(hit.getSourceAsString());
@@ -108,8 +121,8 @@ public class ELKMain {
     //term查询
     public static void doQuery5() throws UnknownHostException {
         TransportClient client = getClient();
-        QueryBuilder qb = QueryBuilders.termQuery("response", "404");
-        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setSize(3).get();
+        QueryBuilder qb = QueryBuilders.termQuery("response", "aaa");
+        SearchResponse sr = client.prepareSearch(elkIndex).setSize(10).get();
         SearchHits hits = sr.getHits();
         for (SearchHit hit : hits) {
             System.out.println(hit.getSourceAsString());
@@ -119,7 +132,7 @@ public class ELKMain {
     //terms查询
     public static void doQuery6() throws UnknownHostException {
         TransportClient client = getClient();
-        QueryBuilder qb = QueryBuilders.termsQuery("response", "xxx", "304");
+        QueryBuilder qb = QueryBuilders.termsQuery("response", "xxx", "200");
         SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setSize(3).get();
         SearchHits hits = sr.getHits();
         for (SearchHit hit : hits) {
@@ -129,20 +142,24 @@ public class ELKMain {
 
     //range查询
     public static void doQuery7() throws UnknownHostException {
+
+
         TransportClient client = getClient();
-        QueryBuilder qb = QueryBuilders.rangeQuery("offset").from(3).to(9999);
-        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setSize(3).get();
+        RangeQueryBuilder qb1 = QueryBuilders.rangeQuery("create_time").from("2019-02-22T06:11:55.778Z").to("2019-02-26T23:11:55.236Z");
+        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb1).execute().actionGet();
         SearchHits hits = sr.getHits();
+        System.out.println(hits.getHits().length);
         for (SearchHit hit : hits) {
-            System.out.println(hit.getSourceAsString());
+            System.out.println(hit.getSourceAsMap().get("message"));
         }
+
     }
 
     //prefix查询
     public static void doQuery8() throws UnknownHostException {
         TransportClient client = getClient();
-        QueryBuilder qb = QueryBuilders.prefixQuery("response", "304");
-        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setSize(3).get();
+        QueryBuilder qb = QueryBuilders.prefixQuery("response", "404");
+        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).setSize(10).get();
         SearchHits hits = sr.getHits();
         for (SearchHit hit : hits) {
             System.out.println(hit.getSourceAsString());
@@ -201,9 +218,9 @@ public class ELKMain {
     //聚合查询，计算总和
     public static void doQuery14() throws UnknownHostException {
         TransportClient client = getClient();
-        AggregationBuilder agg = AggregationBuilders.sum("aggSum").field("offset");
+        AggregationBuilder agg = AggregationBuilders.sum("Sum").field("offset");
         SearchResponse sr = client.prepareSearch(elkIndex).addAggregation(agg).get();
-        Sum sum = sr.getAggregations().get("aggSum");
+        Sum sum = sr.getAggregations().get("Sum");
         System.out.println(sum.getValue());
     }
 
@@ -314,60 +331,231 @@ public class ELKMain {
     }
 
     //查询ES中所有的索引
-    public static void getAllIndices() throws UnknownHostException{
+    public static void getAllIndices() throws UnknownHostException {
         TransportClient client = getClient();
         ActionFuture<IndicesStatsResponse> isr = client.admin().indices().stats(new IndicesStatsRequest().all());
-        IndicesAdminClient indicesAdminClient = client.admin().indices();
-        Map<String, IndexStats> indexStatsMap = isr.actionGet().getIndices();
         Set<String> set = isr.actionGet().getIndices().keySet();
         System.out.println(set);
     }
 
-        //获取索引库中所有的索引字段
-       public static List<String> getIndexFieldList(String fieldName, Map<String, Object> mapProperties) {
-            List<String> fieldList = new ArrayList<String>();
-            Map<String, Object> map = (Map<String, Object>) mapProperties.get("properties");
+    //获取索引库中所有的索引字段和字段类型
+    public static Set<String> getAllIndices(String fieldName, Map<String, Object> mapProperties) {
+        Set<String> fieldSet = new HashSet<String>();
+        Map<String, Object> map = (Map<String, Object>) mapProperties.get("properties");
 
-           Set<String> keys = map.keySet();
-            for (String key : keys) {
-                if (((Map<String, Object>) map.get(key)).containsKey("type")) {
-                    fieldList.add(fieldName + "" + key);
-                } else {
-                    List<String> tempList = getIndexFieldList(fieldName + "" + key
-                            + ".", (Map<String, Object>) map.get(key));
-                    fieldList.addAll(tempList);
-                }
-            }
-            return fieldList;
-        }
-        public static void getAllFields() throws UnknownHostException{
-
-            TransportClient client = getClient();
-            List<String> fieldList = new ArrayList<String>();
-            ClusterState cs = client.admin().cluster().prepareState()
-                    .setIndices(elkIndex).execute().actionGet().getState();
-            IndexMetaData imd = cs.getMetaData().index(elkIndex);
-            MappingMetaData mdd = imd.mapping(elkType);
-
-            System.out.println("111111"+mdd.getSourceAsMap());
-
-            Map<String, Object> mapProperties = new HashMap<String, Object>();
-
-            try {
-                mapProperties = mdd.getSourceAsMap();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            fieldList =getIndexFieldList("", mapProperties);
-            System.out.println("Field List:");
-            for (Object field : fieldList) {
-                System.out.println(field);
+        Set<String> keys = map.keySet();
+        for (String key : keys) {
+            if (((Map<String, Object>) map.get(key)).containsKey("type")) {
+                fieldSet.add(fieldName + "" + key);
+            } else {
+                Set<String> tempList = getAllIndices(fieldName + "" + key
+                        + ".", (Map<String, Object>) map.get(key));
+                fieldSet.addAll(tempList);
             }
         }
+        return fieldSet;
+    }
+
+    public static void getAllFields() throws UnknownHostException {
+
+        TransportClient client = getClient();
+        Set fieldSet = new HashSet<String>();
+        ClusterState cs = client.admin().cluster().prepareState()
+                .setIndices(elkIndex).execute().actionGet().getState();
+        IndexMetaData imd = cs.getMetaData().index(elkIndex);
+        MappingMetaData mdd = imd.mapping(elkType);
+
+        //System.out.println(mdd);
+
+        Map<String, Object> mapProperties = new HashMap<String, Object>();
+
+        try {
+            mapProperties = mdd.getSourceAsMap();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        fieldSet = (Set) getAllIndices("", mapProperties);
+        System.out.println("Field List:");
+        for (Object field : fieldSet) {
+            System.out.println(field);
+        }
+    }
+
+
+    //获取索引中所有字段及类型
+//    public static Map<String, Object> getIndexMappings(String indexName) throws Exception {
+//
+//
+//        GetMappingsRequest getMappingsRequest = new GetMappingsRequest();
+//        getMappingsRequest.indices(indexName).types(new String[0]);
+//
+//        GetMappingsResponse response = EsClient.getInstance().getEsClient()
+//                .admin()
+//                .indices()
+//                .getMappings(getMappingsRequest)
+//                .actionGet();
+//
+//        ImmutableOpenMap<String, ImmutableOpenMap<String, MappingMetaData>> mappings = response.getMappings();
+//        if (mappings.size() == 1) {
+//            for (ObjectObjectCursor<String, ImmutableOpenMap<String, MappingMetaData>> indexEntry : mappings) {
+//                if (indexEntry.value.isEmpty()) {
+//                    continue;
+//                }
+//
+//                for (ObjectObjectCursor<String, MappingMetaData> typeEntry : indexEntry.value) {
+//                    Map<String, Object> filedNameAndTypeMap;
+//                    try {
+//                        filedNameAndTypeMap = typeEntry.value.sourceAsMap();
+//                    } catch (Exception e) {
+//                        throw new RuntimeException(e);
+//                    }
+//
+//                    return filedNameAndTypeMap;
+//                }
+//            }
+//        }
+//
+//        return null;
+//    }
+
+    //对所有字段分词查询
+    public static void query() throws UnknownHostException {
+        TransportClient client = getClient();
+        // 1 条件查询
+        SearchResponse searchResponse = client.prepareSearch("logstash-nginx-access-log").setTypes("doc")
+                .setQuery(QueryBuilders.queryStringQuery("全文")).get();
+
+        // 2 打印查询结果
+        SearchHits hits = searchResponse.getHits(); // 获取命中次数，查询结果有多少对象
+        System.out.println("查询结果有：" + hits.getTotalHits() + "条");
+
+        Iterator<SearchHit> iterator = hits.iterator();
+
+        while (iterator.hasNext()) {
+            SearchHit searchHit = iterator.next(); // 每个查询对象
+
+            System.out.println(searchHit.getSourceAsString()); // 获取字符串格式打印
+        }
+
+//        // 3 关闭连接
+//        client.close();
+    }
+
+//    //根据response进行查询
+//    public static void queryResponse() throws UnknownHostException{
+//        TransportClient client = getClient();
+//        MultiMatchQueryBuilder multiMatchQuery = QueryBuilders.multiMatchQuery("测试", "response", "200");
+//        SearchResponse response = client.prepareSearch("book").setTypes("novel").setQuery(multiMatchQuery).setFrom(0).setSize(10).execute().actionGet();
+//
+//
+//    }
+
+
+    /*
+     * 建立索引,索引建立好之后,会在elasticsearch-0.20.6\data\elasticsearch\nodes\0创建所以你看
+     * @param indexName  为索引库名，一个es集群中可以有多个索引库。 名称必须为小写
+     * @param indexType  Type为索引类型，是用来区分同索引库下不同类型的数据的，一个索引库下可以有多个索引类型。
+     * @param jsondata     json格式的数据集合
+     *
+     * @return
+     */
+    public static void createIndexResponse(String indexname, String type, List<String> jsondata) throws UnknownHostException {
+        TransportClient client = getClient();
+        //创建索引库 需要注意的是.setRefresh(true)这里一定要设置,否则第一次建立索引查找不到数据
+        IndexRequestBuilder requestBuilder = client.prepareIndex(indexname, type);
+
+        for (int i = 0; i < jsondata.size(); i++) {
+            requestBuilder.setSource(jsondata.get(i)).execute().actionGet();
+        }
+    }
+
+
+    //prefix查询
+    public static void queryElkLogType() throws UnknownHostException {
+        TransportClient client = getClient();
+        QueryBuilder qb = QueryBuilders.prefixQuery("index_id", "1");
+        SearchResponse sr = client.prepareSearch("elk_log_type").setQuery(qb).setSize(10).get();
+        SearchHits hits = sr.getHits();
+        for (SearchHit hit : hits) {
+            System.out.println(hit.getSourceAsString());
+        }
+    }
+
+    //按指定字段进行降序排序，返回message信息
+    public static void queryRealTime() throws UnknownHostException {
+        TransportClient client = getClient();
+        QueryBuilder qb = QueryBuilders.matchAllQuery();
+        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).addSort("create_time", SortOrder.DESC).setSize(1).execute().actionGet();
+        SearchHits hits = sr.getHits();
+        for (SearchHit hit : hits) {
+            System.out.println(hit.getSourceAsMap().get("message").toString());
+        }
+    }
 
 
     //测试
     public static void main(String[] args) throws Exception {
+
+
+//        TransportClient client = getClient();
+//        //QueryBuilder qb = QueryBuilders.rangeQuery("create_time").from().toString();
+//        AggregationBuilder agg = AggregationBuilders.stats("set").field("offset");
+//        SearchResponse sr = client.prepareSearch(elkIndex).
+//
+//                addAggregation(agg).
+//                execute().actionGet();
+//        Stats stats = sr.getAggregations().get("set");
+//        System.out.println(stats.getCount());
+
+        String logtype = "otosaas_app";
+
+        //创建连接
+        TransportClient client = getClient();
+
+        //按时间进行范围查询
+        QueryBuilder queryBuilder = QueryBuilders.rangeQuery("create_time").from("2019-02-25T06:11:55.778Z").to("2019-02-27T23:11:55.236Z");
+
+        //按异常进行分组
+        AggregationBuilder termsBuilder = AggregationBuilders.terms("by_response").field("response");
+
+        SearchResponse searchResponse = client.prepareSearch(elkIndex).   //按索引名称条件
+                                        setTypes(logtype).                //按类型条件
+                                        setQuery(queryBuilder).           //按时间范围条件
+                                        addAggregation(termsBuilder).     //分组进行聚合统计个数
+                                        execute().actionGet();
+
+        Terms terms = searchResponse.getAggregations().get("by_response");
+
+        for (Terms.Bucket entry: terms.getBuckets() ){
+            System.out.println(entry.getKey()+":"+entry.getDocCount());
+        }
+
+
+//        //做了强制类型转换
+//        while(groupByCountryBucketInterator.hasNext()) {
+//            StringTerms.Bucket groupByCountryBucket = groupByCountryBucketInterator.next();
+//            System.out.println(groupByCountryBucket.getKey()+":"+groupByCountryBucket.getDocCount());
+//
+//            Histogram groupByJoinDate = (Histogram)groupByCountryBucket.getAggregations().asMap().get("group_by_join_date");
+////            Iterator<org.elasticsearch.search.aggregations.bucket.histogram.Histogram.Bucket> groupByJoinDateBucketIterator = groupByJoinDate.getBuckets().iterator();
+//            Iterator<Histogram.Bucket> groupByJoinDateBucketIterator = (Iterator<Histogram.Bucket>)groupByJoinDate.getBuckets().iterator();
+//            while(groupByJoinDateBucketIterator.hasNext()) {
+//                Histogram.Bucket groupByJoinDateBucket = groupByJoinDateBucketIterator.next();
+//                System.out.println(groupByJoinDateBucket.getKey() + ":" +groupByJoinDateBucket.getDocCount());
+//
+//                Avg avg = (Avg) groupByJoinDateBucket.getAggregations().asMap().get("avg_salary");
+//                System.out.println(avg.getValue());
+//            }
+//        }
+
+
+
+
+
+
+
+
+
         //doQuery1();
         //doQuery2();
         //doQuery3();
@@ -392,7 +580,13 @@ public class ELKMain {
         //doQuery22();
         //doQuery23();
         //getAllIndices();
-        getAllFields();
+        //getAllFields();
+        //getIndexMappings("");
+        //query();
+        //queryResponse;
+        //?createIndexResponse("1","nginx","");
+        //queryElkLogType();
+
 
     }
 }
