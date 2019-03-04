@@ -1,7 +1,9 @@
 package com.demo.clog;
 
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
+import com.google.gson.Gson;
 import net.sf.json.JSONObject;
+import org.apache.commons.lang.UnhandledException;
 import org.elasticsearch.action.ActionFuture;
 import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
 import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
@@ -20,13 +22,13 @@ import org.elasticsearch.cluster.metadata.MappingMetaData;
 import org.elasticsearch.common.collect.ImmutableOpenMap;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.TransportAddress;
+import org.elasticsearch.common.unit.Fuzziness;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentFactory;
-import org.elasticsearch.index.query.MultiMatchQueryBuilder;
-import org.elasticsearch.index.query.QueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.index.query.RangeQueryBuilder;
+import org.elasticsearch.index.mapper.Mapping;
+import org.elasticsearch.index.query.*;
+import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.aggregations.Aggregation;
@@ -47,8 +49,11 @@ import org.elasticsearch.search.aggregations.metrics.stats.Stats;
 import org.elasticsearch.search.aggregations.metrics.sum.Sum;
 import org.elasticsearch.search.sort.SortOrder;
 import org.elasticsearch.transport.client.PreBuiltTransportClient;
+import org.w3c.dom.CDATASection;
+import sun.plugin2.message.Message;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
@@ -355,7 +360,6 @@ public class ELKMain {
         }
         return fieldSet;
     }
-
     public static void getAllFields() throws UnknownHostException {
 
         TransportClient client = getClient();
@@ -381,43 +385,6 @@ public class ELKMain {
         }
     }
 
-
-    //获取索引中所有字段及类型
-//    public static Map<String, Object> getIndexMappings(String indexName) throws Exception {
-//
-//
-//        GetMappingsRequest getMappingsRequest = new GetMappingsRequest();
-//        getMappingsRequest.indices(indexName).types(new String[0]);
-//
-//        GetMappingsResponse response = EsClient.getInstance().getEsClient()
-//                .admin()
-//                .indices()
-//                .getMappings(getMappingsRequest)
-//                .actionGet();
-//
-//        ImmutableOpenMap<String, ImmutableOpenMap<String, MappingMetaData>> mappings = response.getMappings();
-//        if (mappings.size() == 1) {
-//            for (ObjectObjectCursor<String, ImmutableOpenMap<String, MappingMetaData>> indexEntry : mappings) {
-//                if (indexEntry.value.isEmpty()) {
-//                    continue;
-//                }
-//
-//                for (ObjectObjectCursor<String, MappingMetaData> typeEntry : indexEntry.value) {
-//                    Map<String, Object> filedNameAndTypeMap;
-//                    try {
-//                        filedNameAndTypeMap = typeEntry.value.sourceAsMap();
-//                    } catch (Exception e) {
-//                        throw new RuntimeException(e);
-//                    }
-//
-//                    return filedNameAndTypeMap;
-//                }
-//            }
-//        }
-//
-//        return null;
-//    }
-
     //对所有字段分词查询
     public static void query() throws UnknownHostException {
         TransportClient client = getClient();
@@ -437,18 +404,8 @@ public class ELKMain {
             System.out.println(searchHit.getSourceAsString()); // 获取字符串格式打印
         }
 
-//        // 3 关闭连接
-//        client.close();
     }
 
-//    //根据response进行查询
-//    public static void queryResponse() throws UnknownHostException{
-//        TransportClient client = getClient();
-//        MultiMatchQueryBuilder multiMatchQuery = QueryBuilders.multiMatchQuery("测试", "response", "200");
-//        SearchResponse response = client.prepareSearch("book").setTypes("novel").setQuery(multiMatchQuery).setFrom(0).setSize(10).execute().actionGet();
-//
-//
-//    }
 
 
     /*
@@ -470,11 +427,11 @@ public class ELKMain {
     }
 
 
-    //prefix查询
+    //prefix查询（前缀查询）
     public static void queryElkLogType() throws UnknownHostException {
         TransportClient client = getClient();
-        QueryBuilder qb = QueryBuilders.prefixQuery("index_id", "1");
-        SearchResponse sr = client.prepareSearch("elk_log_type").setQuery(qb).setSize(10).get();
+        QueryBuilder qb = QueryBuilders.prefixQuery("response", "4*,5*");
+        SearchResponse sr = client.prepareSearch(elkIndex).setQuery(qb).get();
         SearchHits hits = sr.getHits();
         for (SearchHit hit : hits) {
             System.out.println(hit.getSourceAsString());
@@ -492,69 +449,66 @@ public class ELKMain {
         }
     }
 
+    //按照指定字段进行聚合统计
+    public static void selectCount() throws UnknownHostException{
+        TransportClient client = getClient();
+        //QueryBuilder qb = QueryBuilders.rangeQuery("create_time").from().toString();
+        AggregationBuilder agg = AggregationBuilders.stats("set").field("offset");
+        SearchResponse sr = client.prepareSearch(elkIndex).
+                            addAggregation(agg).
+                            execute().actionGet();
+        Stats stats = sr.getAggregations().get("set");
+        System.out.println(stats.getCount());
+    }
 
-    //测试
-    public static void main(String[] args) throws Exception {
-
-
-//        TransportClient client = getClient();
-//        //QueryBuilder qb = QueryBuilders.rangeQuery("create_time").from().toString();
-//        AggregationBuilder agg = AggregationBuilders.stats("set").field("offset");
-//        SearchResponse sr = client.prepareSearch(elkIndex).
-//
-//                addAggregation(agg).
-//                execute().actionGet();
-//        Stats stats = sr.getAggregations().get("set");
-//        System.out.println(stats.getCount());
-
-        String logtype = "otosaas_app";
-
+    //按请求时间段进行聚合统计(0-1)(1-2)(2-3)(3-4)...
+    public static void timeGroupBy() throws UnknownHostException{
+        String indexType = "doc";
         //创建连接
         TransportClient client = getClient();
-
         //按时间进行范围查询
-        QueryBuilder queryBuilder = QueryBuilders.rangeQuery("create_time").from("2019-02-25T06:11:55.778Z").to("2019-02-27T23:11:55.236Z");
-
+        QueryBuilder qb1 = QueryBuilders.rangeQuery("create_time").from("2019-02-25T06:11:55.778Z").to("2019-02-28T23:11:55.236Z");
+        QueryBuilder mutilQuery = QueryBuilders.multiMatchQuery("response", "4*","5*");
         //按异常进行分组
         AggregationBuilder termsBuilder = AggregationBuilders.terms("by_response").field("response");
-
-        SearchResponse searchResponse = client.prepareSearch(elkIndex).   //按索引名称条件
-                                        setTypes(logtype).                //按类型条件
-                                        setQuery(queryBuilder).           //按时间范围条件
-                                        addAggregation(termsBuilder).     //分组进行聚合统计个数
-                                        execute().actionGet();
-
+        SearchResponse searchResponse = client.prepareSearch(elkIndex).
+                setTypes(indexType).
+                setQuery(qb1).
+                setQuery(mutilQuery).
+                addAggregation(termsBuilder).
+                execute().actionGet();
         Terms terms = searchResponse.getAggregations().get("by_response");
-
+        //循环遍历bucket桶
         for (Terms.Bucket entry: terms.getBuckets() ){
             System.out.println(entry.getKey()+":"+entry.getDocCount());
         }
+    }
 
+    //根据索引名称查询所有索引的字段和类型
+    public static void selectFile() throws Exception{
+        TransportClient client = getClient();
 
-//        //做了强制类型转换
-//        while(groupByCountryBucketInterator.hasNext()) {
-//            StringTerms.Bucket groupByCountryBucket = groupByCountryBucketInterator.next();
-//            System.out.println(groupByCountryBucket.getKey()+":"+groupByCountryBucket.getDocCount());
-//
-//            Histogram groupByJoinDate = (Histogram)groupByCountryBucket.getAggregations().asMap().get("group_by_join_date");
-////            Iterator<org.elasticsearch.search.aggregations.bucket.histogram.Histogram.Bucket> groupByJoinDateBucketIterator = groupByJoinDate.getBuckets().iterator();
-//            Iterator<Histogram.Bucket> groupByJoinDateBucketIterator = (Iterator<Histogram.Bucket>)groupByJoinDate.getBuckets().iterator();
-//            while(groupByJoinDateBucketIterator.hasNext()) {
-//                Histogram.Bucket groupByJoinDateBucket = groupByJoinDateBucketIterator.next();
-//                System.out.println(groupByJoinDateBucket.getKey() + ":" +groupByJoinDateBucket.getDocCount());
-//
-//                Avg avg = (Avg) groupByJoinDateBucket.getAggregations().asMap().get("avg_salary");
-//                System.out.println(avg.getValue());
-//            }
-//        }
+        ImmutableOpenMap<String,MappingMetaData> mappings = client.admin().cluster()
+                                        .prepareState().execute().actionGet().getState()
+                                        .getMetaData().getIndices().get(elkIndex)
+                                        .getMappings();
 
+        Map mapping = mappings.get(elkType).getSourceAsMap();
+
+        String string = mapping.get("properties").toString();
+
+        System.out.println(string);
 
 
 
 
+    }
 
 
 
+
+    //测试
+    public static void main(String[] args) throws Exception {
 
         //doQuery1();
         //doQuery2();
@@ -586,7 +540,8 @@ public class ELKMain {
         //queryResponse;
         //?createIndexResponse("1","nginx","");
         //queryElkLogType();
-
+        //timeGroupBy
+        selectFile();
 
     }
 }
