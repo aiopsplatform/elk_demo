@@ -1,23 +1,12 @@
 package com.demo.clog;
 
-import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import net.sf.json.JSON;
 import net.sf.json.JSONObject;
-import net.sf.json.JSONString;
-import org.apache.commons.lang.UnhandledException;
 import org.elasticsearch.action.ActionFuture;
-import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
-import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
 import org.elasticsearch.action.admin.indices.stats.IndicesStatsRequest;
 import org.elasticsearch.action.admin.indices.stats.IndicesStatsResponse;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequestBuilder;
-import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.action.search.SearchType;
-import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.transport.TransportClient;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
@@ -25,13 +14,8 @@ import org.elasticsearch.cluster.metadata.MappingMetaData;
 import org.elasticsearch.common.collect.ImmutableOpenMap;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.TransportAddress;
-import org.elasticsearch.common.unit.Fuzziness;
 import org.elasticsearch.common.unit.TimeValue;
-import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentFactory;
-import org.elasticsearch.index.mapper.Mapping;
 import org.elasticsearch.index.query.*;
-import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.aggregations.Aggregation;
@@ -40,9 +24,7 @@ import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.bucket.filter.Filter;
 import org.elasticsearch.search.aggregations.bucket.filter.Filters;
 import org.elasticsearch.search.aggregations.bucket.filter.FiltersAggregator;
-import org.elasticsearch.search.aggregations.bucket.histogram.Histogram;
 import org.elasticsearch.search.aggregations.bucket.range.Range;
-import org.elasticsearch.search.aggregations.bucket.terms.StringTerms;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.aggregations.metrics.avg.Avg;
 import org.elasticsearch.search.aggregations.metrics.cardinality.Cardinality;
@@ -52,15 +34,9 @@ import org.elasticsearch.search.aggregations.metrics.stats.Stats;
 import org.elasticsearch.search.aggregations.metrics.sum.Sum;
 import org.elasticsearch.search.sort.SortOrder;
 import org.elasticsearch.transport.client.PreBuiltTransportClient;
-import org.w3c.dom.CDATASection;
-import sun.plugin2.message.Message;
 
-import java.io.IOException;
-import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class ELKMain {
@@ -489,16 +465,16 @@ public class ELKMain {
     }
 
     //根据索引名称查询所有索引的字段和类型
-    public static void selectFile() throws Exception{
-        ImmutableOpenMap<String,MappingMetaData> mappings = null;
+    public static void selectFile(){
+        ImmutableOpenMap<String,MappingMetaData> mappings;
         String mapping = "";
         try {
             TransportClient client = getClient();
 
             mappings = client.admin().cluster()
-                                            .prepareState().execute().actionGet().getState()
-                                            .getMetaData().getIndices().get(elkIndex)
-                                            .getMappings();
+                    .prepareState().execute().actionGet().getState()
+                    .getMetaData().getIndices().get(elkIndex)
+                    .getMappings();
 
             mapping = mappings.get(elkType).source().toString();
         } catch (UnknownHostException e) {
@@ -523,9 +499,7 @@ public class ELKMain {
                 if (ms.getKey().equals("type")){
                     System.out.println(key+":"+ms.getValue());
                 }
-
             }
-
         }
     }
 
