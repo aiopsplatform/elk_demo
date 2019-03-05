@@ -2,7 +2,10 @@ package com.demo.clog;
 
 import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import net.sf.json.JSON;
 import net.sf.json.JSONObject;
+import net.sf.json.JSONString;
 import org.apache.commons.lang.UnhandledException;
 import org.elasticsearch.action.ActionFuture;
 import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
@@ -53,6 +56,7 @@ import org.w3c.dom.CDATASection;
 import sun.plugin2.message.Message;
 
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -486,22 +490,43 @@ public class ELKMain {
 
     //根据索引名称查询所有索引的字段和类型
     public static void selectFile() throws Exception{
-        TransportClient client = getClient();
+        ImmutableOpenMap<String,MappingMetaData> mappings = null;
+        String mapping = "";
+        try {
+            TransportClient client = getClient();
 
-        ImmutableOpenMap<String,MappingMetaData> mappings = client.admin().cluster()
-                                        .prepareState().execute().actionGet().getState()
-                                        .getMetaData().getIndices().get(elkIndex)
-                                        .getMappings();
+            mappings = client.admin().cluster()
+                                            .prepareState().execute().actionGet().getState()
+                                            .getMetaData().getIndices().get(elkIndex)
+                                            .getMappings();
 
-        Map mapping = mappings.get(elkType).getSourceAsMap();
+            mapping = mappings.get(elkType).source().toString();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
 
-        String string = mapping.get("properties").toString();
+        JSONObject jsonObject = JSONObject.fromObject(mapping);
 
-        System.out.println(string);
+        String doc = jsonObject.getString("doc");
 
+        JSONObject jsonObject1 = JSONObject.fromObject(doc);
 
+        String properties = jsonObject1.getString("properties");
 
+        JSONObject jsonObject2 = JSONObject.fromObject(properties);
 
+        Map<String,Map<String,String>> map = jsonObject2;
+
+        for (Map.Entry<String,Map<String,String>> str :map.entrySet()){
+            String key = str.getKey();
+            for (Map.Entry<String,String> ms :str.getValue().entrySet()){
+                if (ms.getKey().equals("type")){
+                    System.out.println(key+":"+ms.getValue());
+                }
+
+            }
+
+        }
     }
 
 
